@@ -6,6 +6,90 @@ cimport numpy as np
 np.import_array()
 
 
+cdef extern from "world/fft.h":
+    ctypedef double fft_complex[2]
+    ctypedef struct fft_plan:
+        int n
+        int sign
+        unsigned int flags
+        fft_complex *c_in
+        double *out
+        double *c_ex_in "in"
+        fft_complex *c_out
+        double *input
+        int *ip
+        double *w
+
+cdef extern from "world/common.h":
+    ctypedef struct ForwardRealFFT:
+        int fft_size
+        double *waveform
+        fft_complex *spectrum
+        fft_plan forward_fft
+
+    ctypedef struct InverseRealFFT:
+        int fft_size
+        double *waveform
+        fft_complex *spectrum
+        fft_plan inverse_fft
+
+    ctypedef struct MinimumPhaseAnalysis:
+        int fft_size
+        double *log_spectrum
+        fft_complex *minimum_phase_spectrum
+        fft_complex *cepstrum
+        fft_plan inverse_fft
+        fft_plan forward_fft
+
+cdef extern from "world/synthesisrealtime.h":
+    ctypedef struct WorldSynthesizer:
+        int fs
+        double frame_period
+        int buffer_size
+        int number_of_pointers
+        int fft_size
+
+        double *buffer
+        int current_pointer
+        int i
+
+        double *dc_remover
+
+        int *f0_length
+        int *f0_origin
+        double ***spectrogram
+        double ***aperiodicity
+
+
+        int current_pointer2
+        int head_pointer
+        int synthesized_sample
+
+        int handoff
+        double handoff_phase
+        double handoff_f0
+        int last_location
+
+        int cumulative_frame
+        int current_frame
+
+        double **interpolated_vuv
+        double **pulse_locations
+        int **pulse_locations_index
+        int *number_of_pulses
+
+        double *impulse_response
+
+        MinimumPhaseAnalysis minimum_phase
+        InverseRealFFT inverse_real_fft
+        ForwardRealFFT forward_real_fft
+
+    void InitializeSynthesizer(int fs, double frame_period, int fft_size,
+        int buffer_size, int number_of_pointers, WorldSynthesizer *synth) except +
+    int AddParameters(double *f0, int f0_length, double **spectrogram,
+    double **aperiodicity, WorldSynthesizer *synth) except +
+
+
 cdef extern from "world/synthesis.h":
     void Synthesis(const double *f0,
         int f0_length, const double * const *spectrogram,
