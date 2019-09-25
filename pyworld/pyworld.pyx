@@ -23,6 +23,9 @@ cdef extern from "world/fft.h":
 cdef extern from "world/common.h":
     ctypedef struct ForwardRealFFT:
         int fft_size
+        double *waveform
+        fft_complex *spectrum
+        fft_plan inverse_fft
 
     ctypedef struct InverseRealFFT:
         int fft_size
