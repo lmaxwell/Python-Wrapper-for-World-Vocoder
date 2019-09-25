@@ -23,9 +23,6 @@ cdef extern from "world/fft.h":
 cdef extern from "world/common.h":
     ctypedef struct ForwardRealFFT:
         int fft_size
-        double *waveform
-        fft_complex *spectrum
-        fft_plan forward_fft
 
     ctypedef struct InverseRealFFT:
         int fft_size
@@ -87,7 +84,8 @@ cdef extern from "world/synthesisrealtime.h":
     void InitializeSynthesizer(int fs, double frame_period, int fft_size,
         int buffer_size, int number_of_pointers, WorldSynthesizer *synth) except +
     int AddParameters(double *f0, int f0_length, double **spectrogram,
-    double **aperiodicity, WorldSynthesizer *synth) except +
+        double **aperiodicity, WorldSynthesizer *synth) except +
+    int Synthesis2(WorldSynthesizer *synth) except +
 
 
 cdef extern from "world/synthesis.h":
@@ -739,3 +737,33 @@ def wav2world(x, fs, fft_size=None, frame_period=default_frame_period):
     sp = cheaptrick(x, f0, t, fs, fft_size=fft_size)
     ap = d4c(x, f0, t, fs, fft_size=fft_size)
     return f0, sp, ap
+
+
+
+cdef class wrapper:    
+    cdef WorldSynthesizer synthesizer
+
+    def __cinit__(self,int fs,double frame_period=5.0,int fft_size=2048,int buffer_size=64,int number_of_pointers=1):
+        InitializeSynthesizer(fs,frame_period,fft_size,buffer_size,number_of_pointers,&self.synthesizer)
+
+    def add(self,np.ndarray[double, ndim=1, mode='c'] f0,
+                 int f0_length,
+                 double[:,::1] sp,
+                 double[:,::1] ap):
+        cdef double[:, ::1] sp0 = sp 
+        cdef double[:, ::1] ap0 = ap 
+        cdef np.intp_t[:] tmp = np.zeros(f0_length, dtype=np.intp)
+        cdef np.intp_t[:] tmp2 = np.zeros(f0_length, dtype=np.intp)
+        cdef double **cpp_sp = <double**> (<void*> &tmp[0])
+        cdef double **cpp_ap = <double**> (<void*> &tmp2[0])
+        cdef np.intp_t i
+        for i in range(f0_length):
+            cpp_sp[i] = &sp0[i, 0]
+            cpp_ap[i] = &ap0[i, 0]
+        AddParameters(&f0[0],f0_length,cpp_sp,cpp_ap,&self.synthesizer)
+
+    def synth(self):
+        Synthesis2(&self.synthesizer)
+
+    def _get_buffer(self):
+        return np.array([self.synthesizer.buffer[i] for i in range(self.synthesizer.buffer_size)])
