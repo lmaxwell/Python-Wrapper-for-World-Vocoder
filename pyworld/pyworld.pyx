@@ -6,89 +6,8 @@ cimport numpy as np
 np.import_array()
 
 
-cdef extern from "world/fft.h":
-    ctypedef double fft_complex[2]
-    ctypedef struct fft_plan:
-        int n
-        int sign
-        unsigned int flags
-        fft_complex *c_in
-        double *out
-        double *c_ex_in "in"
-        fft_complex *c_out
-        double *input
-        int *ip
-        double *w
-
-cdef extern from "world/common.h":
-    ctypedef struct ForwardRealFFT:
-        int fft_size
-        double *waveform
-        fft_complex *spectrum
-        fft_plan inverse_fft
-
-    ctypedef struct InverseRealFFT:
-        int fft_size
-        double *waveform
-        fft_complex *spectrum
-        fft_plan inverse_fft
-
-    ctypedef struct MinimumPhaseAnalysis:
-        int fft_size
-        double *log_spectrum
-        fft_complex *minimum_phase_spectrum
-        fft_complex *cepstrum
-        fft_plan inverse_fft
-        fft_plan forward_fft
-
-cdef extern from "world/synthesisrealtime.h":
-    ctypedef struct WorldSynthesizer:
-        int fs
-        double frame_period
-        int buffer_size
-        int number_of_pointers
-        int fft_size
-
-        double *buffer
-        int current_pointer
-        int i
-
-        double *dc_remover
-
-        int *f0_length
-        int *f0_origin
-        double ***spectrogram
-        double ***aperiodicity
 
 
-        int current_pointer2
-        int head_pointer
-        int synthesized_sample
-
-        int handoff
-        double handoff_phase
-        double handoff_f0
-        int last_location
-
-        int cumulative_frame
-        int current_frame
-
-        double **interpolated_vuv
-        double **pulse_locations
-        int **pulse_locations_index
-        int *number_of_pulses
-
-        double *impulse_response
-
-        MinimumPhaseAnalysis minimum_phase
-        InverseRealFFT inverse_real_fft
-        ForwardRealFFT forward_real_fft
-
-    void InitializeSynthesizer(int fs, double frame_period, int fft_size,
-        int buffer_size, int number_of_pointers, WorldSynthesizer *synth) except +
-    int AddParameters(double *f0, int f0_length, double **spectrogram,
-        double **aperiodicity, WorldSynthesizer *synth) except +
-    int Synthesis2(WorldSynthesizer *synth) except +
 
 
 cdef extern from "world/synthesis.h":
@@ -742,17 +661,68 @@ def wav2world(x, fs, fft_size=None, frame_period=default_frame_period):
     return f0, sp, ap
 
 
+cdef extern from "world/synthesisrealtime.h":
+    ctypedef struct WorldSynthesizer:
+        int fs;
+        double frame_period;
+        int buffer_size;
+        int number_of_pointers;
+        int fft_size;
 
+        double *buffer;
+        int current_pointer;
+        int i;
+
+        double *dc_remover;
+
+        int *f0_length;
+        int *f0_origin;
+        double ***spectrogram;
+        double ***aperiodicity;
+
+
+        int current_pointer2;
+        int head_pointer;
+        int synthesized_sample;
+
+        int handoff;
+        double handoff_phase;
+        double handoff_f0;
+        int last_location;
+
+        int cumulative_frame;
+        int current_frame;
+
+        double **interpolated_vuv;
+        double **pulse_locations;
+        int **pulse_locations_index;
+        int *number_of_pulses;
+
+        double *impulse_response;
+
+    WorldSynthesizer* NewSynthesizer() 
+    void InitializeSynthesizer(int fs, double frame_period, int fft_size,
+        int buffer_size, int number_of_pointers, WorldSynthesizer *synth) 
+    int AddParameters(double *f0, int f0_length, double **spectrogram,
+        double **aperiodicity, WorldSynthesizer *synth) 
+    int Synthesis2(WorldSynthesizer *synth) 
+    void RefreshSynthesizer(WorldSynthesizer *synth)
+
+
+"""
 cdef class wrapper:    
-    cdef WorldSynthesizer synthesizer
+    cdef  WorldSynthesizer *synthesizer
 
     def __cinit__(self,int fs,double frame_period=5.0,int fft_size=2048,int buffer_size=64,int number_of_pointers=1):
-        InitializeSynthesizer(fs,frame_period,fft_size,buffer_size,number_of_pointers,&self.synthesizer)
+        self.synthesizer= NewSynthesizer()
+        InitializeSynthesizer(fs,frame_period,fft_size,buffer_size,number_of_pointers,self.synthesizer)
 
-    def add(self,np.ndarray[double, ndim=1, mode='c'] f0,
-                 int f0_length,
-                 double[:,::1] sp,
-                 double[:,::1] ap):
+    def add(self,np.ndarray[double, ndim=1, mode="c"] f0 not None,
+                 f0_length,
+                 np.ndarray[double, ndim=2, mode="c"] sp not None,
+                 np.ndarray[double, ndim=2, mode="c"] ap not None):
+
+        cdef int cpp_f0_length = <int>len(f0)
         cdef double[:, ::1] sp0 = sp 
         cdef double[:, ::1] ap0 = ap 
         cdef np.intp_t[:] tmp = np.zeros(f0_length, dtype=np.intp)
@@ -760,13 +730,66 @@ cdef class wrapper:
         cdef double **cpp_sp = <double**> (<void*> &tmp[0])
         cdef double **cpp_ap = <double**> (<void*> &tmp2[0])
         cdef np.intp_t i
-        for i in range(f0_length):
+        for i in range(cpp_f0_length):
             cpp_sp[i] = &sp0[i, 0]
             cpp_ap[i] = &ap0[i, 0]
-        AddParameters(&f0[0],f0_length,cpp_sp,cpp_ap,&self.synthesizer)
+        AddParameters(&f0[0],cpp_f0_length,cpp_sp,cpp_ap,self.synthesizer)
+        return tmp,tmp2
+
+
+
 
     def synth(self):
-        Synthesis2(&self.synthesizer)
+        return Synthesis2(self.synthesizer)
 
     def _get_buffer(self):
         return np.array([self.synthesizer.buffer[i] for i in range(self.synthesizer.buffer_size)])
+"""
+
+from libcpp.vector cimport vector
+from libc.stdlib cimport malloc,free
+cdef class wrapper2:    
+    cdef WorldSynthesizer synthesizer
+    cdef vector[long] ptr_vec
+
+    def __cinit__(self,int fs,double frame_period=5.0,int fft_size=2048,int buffer_size=64,int number_of_pointers=1):
+        InitializeSynthesizer(fs,frame_period,fft_size,buffer_size,number_of_pointers,&self.synthesizer)
+
+    def add(self,np.ndarray[double, ndim=1, mode="c"] f0 not None,
+                 f0_length,
+                 np.ndarray[double, ndim=2, mode="c"] sp not None,
+                 np.ndarray[double, ndim=2, mode="c"] ap not None):
+
+        cdef int cpp_f0_length = <int>len(f0)
+        cdef double[:, ::1] sp0 = sp 
+        cdef double[:, ::1] ap0 = ap 
+        cdef double **tmp = <double **> malloc(sizeof(double **)*f0_length)
+        cdef double **tmp2 = <double **> malloc(sizeof(double **)*f0_length)
+        self.ptr_vec.push_back(<long>tmp)
+        self.ptr_vec.push_back(<long>tmp2)
+
+        cdef double **cpp_sp = <double**> (<void*> &tmp[0])
+        cdef double **cpp_ap = <double**> (<void*> &tmp2[0])
+        cdef np.intp_t i
+        for i in range(cpp_f0_length):
+            cpp_sp[i] = &sp0[i, 0]
+            cpp_ap[i] = &ap0[i, 0]
+        return AddParameters(&f0[0],cpp_f0_length,cpp_sp,cpp_ap,&self.synthesizer)
+
+    def free(self):
+        for i in range(self.ptr_vec.size()):
+            free(<double **>self.ptr_vec[i])
+        self.ptr_vec.clear()
+        RefreshSynthesizer(&self.synthesizer)
+
+    def synth(self):
+        return Synthesis2(&self.synthesizer)
+
+    def _get_buffer(self):
+        return np.array([self.synthesizer.buffer[i] for i in range(self.synthesizer.buffer_size)])
+    def _print(self):
+        print("current_pointer {}".format(self.synthesizer.current_pointer))
+        print("current_pointer2 {}".format(self.synthesizer.current_pointer2))
+        print("head_pointer {}".format(self.synthesizer.head_pointer))
+        print("synthesized_sample {}".format(self.synthesizer.synthesized_sample))
+        print("last_location {}".format(self.synthesizer.last_location))
