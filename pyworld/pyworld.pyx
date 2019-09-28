@@ -707,6 +707,8 @@ cdef extern from "world/synthesisrealtime.h":
         double **aperiodicity, WorldSynthesizer *synth) 
     int Synthesis2(WorldSynthesizer *synth) 
     void RefreshSynthesizer(WorldSynthesizer *synth)
+    void DestroySynthesizer(WorldSynthesizer *synth)
+
 
 
 """
@@ -793,3 +795,5 @@ cdef class wrapper2:
         print("head_pointer {}".format(self.synthesizer.head_pointer))
         print("synthesized_sample {}".format(self.synthesizer.synthesized_sample))
         print("last_location {}".format(self.synthesizer.last_location))
+    def __dealloc__(self):
+        DestroySynthesizer(&self.synthesizer)
